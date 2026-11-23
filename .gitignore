@@ -1,5 +1,4 @@
 # Segredos, chaves e credenciais
-api_key.txt
 .env
 *.pem
 
