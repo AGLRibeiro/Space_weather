@@ -12,10 +12,17 @@ env/
 *.egg-info/
 
 # Dados gerados localmente e arquivos temporários
-*.csv
 *.parquet
-data/
+*.json
+data/bronze/
+data/silver/
+data/gold/
 logs/
+
+# Manter a estrutura das pastas no Git
+!data/bronze/.gitkeep
+!data/silver/.gitkeep
+!data/gold/.gitkeep
 
 # Arquivos de editores e sistema operacional
 .vscode/
