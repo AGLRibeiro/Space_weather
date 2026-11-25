@@ -11,3 +11,4 @@ load_dotenv(ENV_DIR)
 API_KEY = os.getenv("API_KEY")
 
 BRONZE_DATA_DIR = BASE_DIR / "data" / "bronze"
+SILVER_DATA_DIR = BASE_DIR / "data" / "silver"

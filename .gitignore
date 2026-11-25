@@ -14,9 +14,9 @@ env/
 # Dados gerados localmente e arquivos temporários
 *.parquet
 *.json
-data/bronze/
-data/silver/
-data/gold/
+data/bronze/*
+data/silver/*
+data/gold/*
 logs/
 
 # Manter a estrutura das pastas no Git

@@ -11,7 +11,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-class NASADONKIExtractor:
+class NASADONKIExtractor_pipeline:
 
     DEFAULT_ENDPOINTS = [
         "CME", "CMEAnalysis", "GST", "IPS",
@@ -30,29 +30,28 @@ class NASADONKIExtractor:
 
         logging.info("Criando instância do extrator de dados.")
 
-        try:
-            self.base_url = base_url
 
-            if not api_key or not api_key.strip():
-                raise ValueError("api_key inválida ou vazia.")
-                                 
-            self.api_key = api_key.strip()
+        self.base_url = base_url
 
-            self.endpoints = (
-                endpoints if endpoints is not None
-                else self.DEFAULT_ENDPOINTS.copy()
-            )
+        if not api_key or not api_key.strip():
+            raise ValueError("api_key inválida ou vazia.")
+                                
+        self.api_key = api_key.strip()
 
-            self.chunk_size = chunk_size
-            self.retry_delay = retry_delay
-            self.max_attempt = max_attempt
+        self.endpoints = (
+            endpoints if endpoints is not None
+            else self.DEFAULT_ENDPOINTS.copy()
+        )
 
-            self.data = {}
+        self.chunk_size = chunk_size
+        self.retry_delay = retry_delay
+        self.max_attempt = max_attempt
 
-            self.session = requests.Session()
+        self.data = {}
 
-        except Exception as e:
-            logging.exception(f"Erro: {e}")
+        self.session = requests.Session()
+
+        logging.info("Instância criada.")
 
     def _fetch_donki_range(
             self, 
@@ -78,27 +77,27 @@ class NASADONKIExtractor:
                 timeout=30
                 )
             
-            if response.status_code == 200:
-                logging.info("Sucesso!")
-                return response.json()
-
             if response.status_code == 404:
                 logging.warning(f"Aviso: endpoint '{endpoint}' não encontrado para {start_date}..{end_date}.")
                 return None
-            
-            logging.error(
-            f"Status inesperado {response.status_code} em {endpoint} "
-            f"para {start_date}..{end_date}: {response.text[:300]}"
-            )
 
             response.raise_for_status()
 
+            data = response.json()
+
+            logging.info("Consulta realizada com sucesso para '%s.", endpoint)
+            return data
+        
         except requests.exceptions.Timeout:
             logging.exception(f"Timeout na requisição.")
             raise
 
         except requests.exceptions.RequestException as e:
             logging.exception(f"Erro: {e}")
+            raise
+
+        except requests.exceptions.JSONDecodeError:
+            logging.exception("Resposta Json inválida do endpoint '%s.", endpoint)
             raise
 
     def _collect_history(
@@ -182,30 +181,25 @@ class NASADONKIExtractor:
 
             return self.data
     
-    def save_data(
+    def save_bronze_data(
             self,
             output_dir: Path | str
             ) -> None:
 
         logging.info("Salvando dados")
 
-        try:
-            target_dir = Path(output_dir)
-            target_dir.mkdir(parents = True, exist_ok=True)
+        target_dir = Path(output_dir)
+        target_dir.mkdir(parents = True, exist_ok=True)
 
-            for endpoint, data in self.data.items():
+        for endpoint, data in self.data.items():
 
-                output_path = target_dir/f"{endpoint}_data.json"
+            output_path = target_dir/f"{endpoint}_data.json"
 
-                if data:
-                    with output_path.open("w", encoding="utf-8") as f:
-                        json.dump(data, f, indent=4, ensure_ascii=False)
+            if data:
+                with output_path.open("w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=4, ensure_ascii=False)
 
-                    logging.info("Arquivo salvo: %s", output_path)
+                logging.info("Arquivo salvo: %s", output_path)
 
-                else: 
-                    logging.warning("%s vazio.", endpoint)
-
-        except Exception as e:
-            logging.exception("Falha ao salvar os dados em: '%s': %s", output_path, e)
-            raise
+            else: 
+                logging.warning("%s vazio.", endpoint)
