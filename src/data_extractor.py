@@ -11,7 +11,7 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-class NASADONKIExtractor_pipeline:
+class NASA_DONKI_Extractor_Pipeline:
 
     DEFAULT_ENDPOINTS = [
         "CME", "CMEAnalysis", "GST", "IPS",
@@ -21,33 +21,25 @@ class NASADONKIExtractor_pipeline:
     def __init__(
             self,
             api_key: str,
-            base_url: str = "https://api.nasa.gov/DONKI",
-            endpoints: list[str] | None = None,
-            chunk_size: int = 120,
+            chunk_size: int = 60,   # O limite permitido pela API
             max_attempt: int = 5,
             retry_delay: float = 1.0
         ) -> None:
 
         logging.info("Criando instância do extrator de dados.")
 
-
-        self.base_url = base_url
-
         if not api_key or not api_key.strip():
             raise ValueError("api_key inválida ou vazia.")
                                 
         self.api_key = api_key.strip()
-
-        self.endpoints = (
-            endpoints if endpoints is not None
-            else self.DEFAULT_ENDPOINTS.copy()
-        )
 
         self.chunk_size = chunk_size
         self.retry_delay = retry_delay
         self.max_attempt = max_attempt
 
         self.data = {}
+        self.base_url = ''
+        self.endpoints = []
 
         self.session = requests.Session()
 
@@ -80,7 +72,7 @@ class NASADONKIExtractor_pipeline:
             if response.status_code == 404:
                 logging.warning(f"Aviso: endpoint '{endpoint}' não encontrado para {start_date}..{end_date}.")
                 return None
-
+            
             response.raise_for_status()
 
             data = response.json()
@@ -92,12 +84,12 @@ class NASADONKIExtractor_pipeline:
             logging.exception(f"Timeout na requisição.")
             raise
 
-        except requests.exceptions.RequestException as e:
-            logging.exception(f"Erro: {e}")
-            raise
-
         except requests.exceptions.JSONDecodeError:
             logging.exception("Resposta Json inválida do endpoint '%s.", endpoint)
+            raise
+
+        except requests.exceptions.RequestException as e:
+            logging.exception(f"Erro: {e}")
             raise
 
     def _collect_history(
@@ -107,7 +99,7 @@ class NASADONKIExtractor_pipeline:
             end_date: date
         ) -> pd.DataFrame:
 
-        logging.info(f"Iniciando consulta dos dados do {endpoint}.")
+        logging.info(f"Iniciando coleta dos dados do {endpoint} para {start_date} até {end_date}.")
 
         records = []
 
@@ -140,19 +132,19 @@ class NASADONKIExtractor_pipeline:
                 attempt += 1
 
         if records:
-            logging.info("Sucesso!")
+            logging.info("Dados coletados!")
             return records
         else:
             logging.info("Sem dados no intervalo.")
             return None
 
-    def collect_data(
+    def _collect_data(
             self,
             start_date: date,
             end_date: date,
         ) -> dict[str, pd.DataFrame]:
 
-        logging.info(f"Iniciando coleta de dados.")
+        logging.info(f"Iniciando coleta dos dados para os endpoints {self.endpoints}.")
 
         if start_date > end_date:
             logging.error(f"Erro: Data inicial ({start_date}) é posterior à data final ({end_date}).")
@@ -181,19 +173,16 @@ class NASADONKIExtractor_pipeline:
 
             return self.data
     
-    def save_bronze_data(
+    def _save_bronze_data(
             self,
-            output_dir: Path | str
+            dir: Path
             ) -> None:
 
-        logging.info("Salvando dados")
-
-        target_dir = Path(output_dir)
-        target_dir.mkdir(parents = True, exist_ok=True)
+        logging.info("Salvando dados da camada bronze")
 
         for endpoint, data in self.data.items():
 
-            output_path = target_dir/f"{endpoint}_data.json"
+            output_path = dir / f"{endpoint}_data.json"
 
             if data:
                 with output_path.open("w", encoding="utf-8") as f:
@@ -203,3 +192,29 @@ class NASADONKIExtractor_pipeline:
 
             else: 
                 logging.warning("%s vazio.", endpoint)
+
+    def run(
+            self,
+            base_url: str,
+            endpoints: list[str],
+            start_date: date,
+            end_date: date,
+            output_dir: str
+            ) -> None:
+        
+        logging.info(f"Iniciando extração de dados para {endpoints}.")
+
+        self.base_url = base_url
+        self.endpoints = endpoints
+
+        self._collect_data(
+            start_date=start_date,
+            end_date=end_date
+        )
+
+        target_dir = Path(output_dir)
+        target_dir.mkdir(parents = True, exist_ok=True)
+
+        self._save_bronze_data(dir=target_dir)
+
+        logging.info(f"Extração dos dados de {endpoints} concluidos.")

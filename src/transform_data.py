@@ -7,7 +7,7 @@ logging.basicConfig(
     format="%(acstime)s - %(levelname)s - %(message)s"
 )
 
-class Transform_data_pipeline:
+class TransformDataPipeline:
 
     def __init__(
             self,
@@ -36,16 +36,20 @@ class Transform_data_pipeline:
     def _transform_nested_data(
             self,
             data: pd.DataFrame,
-            column: str
-            ) -> pd.DataFrame:
+            columns: list[str] 
+            ) -> list[pd.DataFrame]:
 
-        logging.info("Expandindo as listas e transformando os dicionários em colunas para a coluna '%s'.", column)
+        logging.info("Expandindo as listas e transformando os dicionários em colunas para as colunas '%s'.", columns)
+        nested_data = []
 
-        df = data[column].explode()
-        df = pd.json_normalize(df)
+        for column in columns:
 
+            df = data[column].explode()
+            df = pd.json_normalize(df)
+            nested_data.append(df)
+        
         logging.info("Dados expandidos e normalizados.")
-        return df
+        return nested_data
 
     def _save_silver_data(
             self,
@@ -56,7 +60,7 @@ class Transform_data_pipeline:
         if data is None:
             data = self.data
     
-        logging.info("Salvando dados no arquivo %s", file_name)
+        logging.info("Salvando dados silver no arquivo %s", file_name)
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -64,7 +68,7 @@ class Transform_data_pipeline:
 
         data.to_parquet(output_name)
 
-        logging.info("Dados salvos.")
+        logging.info("Dados silver salvos.")
 
     def _drop_columns(
             self,
@@ -78,29 +82,35 @@ class Transform_data_pipeline:
 
         logging.info(f"Colunas {columns_names} removidas - {len(df.columns)} colunas restantes.")
         return df
-        
-    def _pipeline_CME(self) -> None:
-        self._read_data("CME")
 
-        CMEAnalysis_data = self._transform_nested_data(
-            data=self.data,
-            column="cmeAnalyses"
+    def _normalize_datetime_columns(
+            self,
+            columns_names = list[str]
+    ) -> pd.DataFrame:
+
+        logging.info(f"Convertendo colunas para datetime: {columns_names}.")
+        for name in columns_names:
+            self.data[name] = pd.to_datetime(
+                self.data[name],
+                utc=True
+            ).dt.tz_convert('America/Sao_Paulo')
+
+        logging.info("Colunas convertidas para datetime")
+
+        
+    def run_pipeline_CMEAnalysis(self) -> None:
+
+        logging.info("Executando transformações nos dados de CME")
+        self._read_data("CMEAnalysis")
+
+        columns_names_to_drop = ["catalog", "isMostAccurate", "dataLevel", "tilt", "minorHalfWidth", "link", "versionId"]
+        columns_to_normalize_datetime = ["time21_5", "submissionTime"]
+
+        self.data = self._drop_columns(
+            df=self.data,
+            columns_names=columns_names_to_drop
             )
 
-        self._save_silver_data(
-            data=CMEAnalysis_data,
-            file_name="CMEAnalysis"
-        )
+        self._normalize_datetime_columns(columns_names=columns_to_normalize_datetime)
 
-        self._drop_columns(
-            df = self.data,
-            columns_names=["cmeAnalyses"]
-        )
-
-        self._save_silver_data("CME")
-
-    def run(self) -> None:
-        for transform in self.transform_data:
-            method_name = f"_pipeline_{transform}"
-            method = getattr(self, method_name)
-            method()
+        self._save_silver_data(file_name="CMEAnalysis")
